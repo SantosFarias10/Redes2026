@@ -11,5 +11,5 @@ Una **Red de Computadoras** es un conjunto de computadoras interconectadas, o se
 4. [[Conectando Redes de Área Amplia]].
 5. [[Redes Proveedoras de Contenido]].
 6. [[Conectando Procesos]].
-7. Aplicaciones de Red.
-8. Modelo de Capa de una Red.
+7. [[Aplicaciones de Red]].
+8. [[Modelo de Capa de una Red]].
