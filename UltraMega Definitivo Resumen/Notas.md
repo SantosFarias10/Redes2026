@@ -154,3 +154,143 @@ Con `rwnd = 0`, el emisor no puede enviar datos normales, pero hay 2 **excepcion
 #### ¿Porqué existe la sonda?
 Por si el aviso de ventana del receptor se pierde, el emisor podría esperar indefinidamente. La sonda de un byte evita el bloqueo irreversible forzando una nueva actualización de `rwnd`.
 # Control de Congestion
+La congestión ocurre cuando la red no puede seguir el ritmo del tráfico que le llega. O sea, es cuando un emisor manda más datos de los que la subred puede transportar.
+#### Cómo ocurre
+1. **Llegan demasiados paquetes**: El tráfico entrante supera la capacidad de reenvío del enrutador.
+2. **Los búferes se desbordan**: La cola de salida se llena y el enrutador no puede almacenar más.
+3. **Se descartan paquetes**: El enrutador tira segmentos.
+### El Problema
+Necesitamos controlar el ritmo de envío según la capacidad real de la red.
+Es la capa de transporte (TCP en el emisor) quien regula el ritmo.
+#### ¿Cómo controla la congestión TCP?
+TCP hace lo siguiente
+* **Mide**
+	* Mantiene la **venta de congestión** (`cwnd` o VC): El máximo de bytes que el emisor puede tener sin confirmar en un momento dado.
+* **Detecta**
+	* ¿Cómo sabe el emisor que la red se está congestionando? Porque asume que **si se pierde un paquete, es porque un enrutador se saturó y lo descartó**
+	* El emisor se da cuenta de esta pérdida utilizando los mecanismos
+		* Timeout: El temporizador expiró porque el ACK nunca llegó.
+		* ACKs duplicados: Llegan 3 ACKs repetidos porque los paquetes se desordenaron debido al hueco que dejó el paquete perdido.
+* **Reacciona**:
+	* Cuando el emisor detecta la pérdida, entiende que hay embotellamiento en la red.
+	* Su reacción inmediata es reducir drásticamente el tamaño de su ventana de congestión
+	* Al hacer esto, el emisor se auto-limita y envía menos datos por viaje, dándole tiempo a los enrutadores intermedios para vaciar sus colas y aliviar la red.
+#### ¿Cómo detecta TCP la congestión?
+TCP detecta la congestión a partir de la pérdida de paquetes. Cuando expira el temporizador de retransmisión, el paquete probablemente se perdió.
+##### ¿Porqué? hay 2 posibles causas
+1. **Ruido en el cable** (capa física / enlace)
+	* Un error físico corrompe los bits y el paquete se descarta.
+2. **Enrutador congestionado**
+	* Los búferes están llenos y el enrutador descarta paquetes.
+#### ¿Qué tamaño le damos a la Ventana de Congestión?
+Si la ventana de congestión es muy chica desperdiciamos capacidad, si es muy grande generamos congestión.
+Por lo que hay que empezar dándole poco tamaño y aumenta hasta que la red indique que llegamos al límite **arranque lento**.
+### Arranque Lento
+* Este algoritmo empieza con una ventana de congestión pequeña y se duplica hasta detectar que la red se satura.
+* Se llama "Lento" porque arranca desde 1 segmento.
+* Una vez que el emisor envía ese primer segmento y recibe confirmación, el algoritmo dicta que la ventana de congestión crece sumando un segmento por cada ACK recibido.
+	* O sea, RTT 1: envía 1 segmento. Recibe 1 ACK, la ventana crece a 2.
+	* RTT 2: Envía 2 segmentos, Recibe 2 ACKs, la ventana crece a 4.
+	* RTT 3: Envía 4 segmentos. Recibe 4 ACKs, la ventana crece a 8.
+* Esto hace que el crecimiento sea exponencial.
+* Este crecimiento continúa hasta que ocurre una de estas dos cosas:
+	* Encuentra el límite de la red, o sea se produce congestión
+	* Alcanza un umbral de seguridad (`ssthresh`). Si llega a un umbral predefinido, deja de crecer de forma exponencial y pasa a un crecimiento lineal.
+#### Paso a Paso
+1. Inicio: Emisor y receptor acuerdan el Segmento de tamaño máximo (STM). La ventana arranca en 1 STM y envía 1 segmento.
+2. Confirmación: Si el ACK llega antes del timeout, la ventana crece en 1 STM por cada ACK recibido en esa ráfaga.
+3. Duplicación por RTT: Al confirmar `n` segmentos, la ventana pasa de `n` a `2n`, el ritmo crece exponencialmente.
+4. Hasta el límite: Crece hasta que ocurre un timeout o se alcanza el tamaño de la ventana del receptor.
+#### Reglas claves
+1. Si el ACK llega a tiempo
+```
+ventana = ventana + n (segmentos)
+```
+2. Si hay timeout
+```
+ventanta = ventata / 2
+```
+* La ventana se recorta a la mitad y no se enviarán ráfagas mayores.
+#### Problemas del arranque lento
+1. **Reacción Excesiva**
+	* Al haber un timeout, corta a la mitad puede ser demasiado, si la red puede soportar más que la mitad de la ventana actual => se desaprovecha la capacidad de la subred.
+2. **Detección Lenta**
+	* El timeout tarda en dispararse. El emisor no sabe que hubo pérdidas hasta que se expire el temporizador, por lo que sigue inyectando paquetes con una ventana mayor a la que la red soporta.
+#### ¿Cómo detectar las pérdidas antes del timeout?
+A través de los ACK
+* Asumimos que cada segmento que llega al receptor dispara un ACK.
+* El ACK siempre indica el próximo byte en orden recibe.
+* Eso significa que el emisor puede oír la pérdida vía los ACKs duplicados sin esperar a que expire el temporizador.
+##### ¡¡¡OJO!!!
+No todo ACK duplicado implica pérdida.
+Recordad que los paquetes pueden llegar desordenados y disparar ACKs duplicados Falsos.
+* Caso 1: Reordenamiento (**falso positivo**)
+	* Llegan segmentos fuera de orden.
+	* Se dispara 1 - 2 ACKs duplicados pero ningún paquete se perdió.
+	* **Pocos duplicados**.
+* **Caso 2: Pérdida real**
+	* El segmento `N` no llego al receptor.
+	* Los segmentos posteriores si llegaron, y cada uno dispara un ACK diciendo "Espero `N`"
+	* **Muchos duplicados seguidos**.
+Por eso es que se cuentan los ACKs
+## TCP Tahoe
+Tahoe Combina arranque lento con un umbral que divide las fases de crecimiento.
+#### Idea nueva
+El umbral (SSTHRESH, *slow start threshold*).
+- **Debajo del umbral** usamos Arranque lento
+	* La ventana se duplica cada RTT,  crecimiento exponencial, para encontrar rápido la capacidad de la red.
+- **Sobre el umbral**: Evitación de congestión 
+	* La ventana crece de manera lineal. Nos acercamos con cuidado a la capacidad máxima. 
+	* MSS = *Maximum Segment Size* ( = STM en castellano).
+### Reacción ante pérdida
+Ante pérdida (timeout o 3 ACKs duplicados), Tahoe reacciona igual:
+```
+umbral (ssthresh) = VC actual / 2
+VC = 1 MSS
+```
+1. Se detecta pérdida (timeout o 3 ACKs duplicados)
+	* El emisor registra el evento de congestión.
+2. Se guarda la mitad como umbral (`ssthresh = VC actual / 2`)
+3. La ventana vuelve al mínimo `VC = 1 MSS`
+	* Empezamos desde cero porque no sabemos si el estado de la red cambió.
+4. Arranque lento hasta el umbral, luego crecimiento lineal.
+### Estado estable: El "diente de sierra"
+#### Patrón típico 
+- La VC sube de forma lineal en evitación de congestión.
+- Cuando llega al punto de saturación, se pierde un paquete.
+- La VC se corta a la mitad (pasa a ser el nuevo umbral) y vuelve a 1 MSS.
+- Arranque lento rápido hasta el umbral, luego crecimiento lineal otra vez.
+Este ciclo es la forma clásica "**diente de sierra**".
+![518](Screenshot_2026-05-26-14-13-35_10485.png)
+## TCP Reno
+Reno trata distinto a una pérdida detectada por ACKs duplicados que por un timeout:
+* **Timeout** (=> la red se colapsó)
+	* El "reloj de ACKs" se detuvo, probablemente ningún paquete está llegando. 
+	* ¿Qué hace Reno? Mismo tratamiento que Tahoe: VC = 1 MSS (arranque lento).
+* **3 ACKs duplicados** (=> la red sigue andando)
+	* Están llegando paquetes posteriores, entonces la red entrega, por lo que hay congestión pero no colapso.
+	* Acción: Salta el arranque lento y entra en recuperación rápida.
+>[!tip] Tahoe y Reno son iguales al inicio de la conexión y ante timeouts. Difieren solo ante 3 ACKs duplicados.
+
+![](Screenshot_2026-05-26-14-18-32_20628.png)
+#### Cuadrito comparativo
+
+| Evento                | TCP Tahoe                       | TCP Reno                                |
+| :-------------------- | :------------------------------ | :-------------------------------------- |
+| Inicio de conexión    | Arranque lento                  | Arranque lento (igual)                  |
+| Timeout               | VC &larr; 1 MSS, arranque lento | VC &larr; 1 MSS, arranque lento (igual) |
+| 3 ACKs duplicados     | VC &larr; 1MSS , arranque lento | VC &larr; ssthresh, recuperación rápida |
+| Después de la pérdida | Vuelve a empezar desde 1        | Sigue enviando con la mitad de la VC    |
+### Adicionales Importantes
+#### La congestión también se detecta por delay
+El problema de detectar congestión sólo con pérdidas es que, antes de que haya pérdidas: 
+- Las colas en routers crecen.
+- El RTT aumenta.
+- Se acumula delay.
+Las señales basadas en delay, permiten usar el aumento del RTT como indicador temprano.
+* RTT esperado (sin cola)
+* RTT medido (con cola)
+* Si RTT es mayor, entonces hay cola y entonces hay congestión.
+La congestión aparece antes del drop. El delay permite detectarla antes.
+#### Control de Flujo + Control de congestión en TCP
+![478](Screenshot_2026-05-26-14-25-36_5944.png)
