@@ -7,7 +7,7 @@ Este bloque responde a la pregunta ¿Cómo transformamos bits en algo que pueda 
 ![](Screenshot_2026-06-21-09-58-37_28299.png)
 -  Ondas sinusoidales 
   $s(t) = A \ sin(2 \pi ft + \phi)$ , t número real.
-  Propiedades de las ondas sinusoidales: frecuencia, amplitud, y fase
+  Propiedades de las ondas sinusoidales: **frecuencia, amplitud, y fase**
 ![](Screenshot_2026-06-21-10-00-22_20960.png)
 ## Medios Físicos 
 ¿Por dónde viajan las señales? Por medios físicos, que se clasifican en:
