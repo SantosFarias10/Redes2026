@@ -57,7 +57,7 @@ Al presionar botón de envío de formulario se hace pedido al servidor de ejecuc
 
 ## Navegadores web
 El navegador es la puerta de entrada del usuario a la Web. Analizaremos cómo decide qué tipo de documento recibe, como lo procesa y qué mecanismos utiliza para mostrarlo en pantalla.
-### ¿Cuándo llega un documento del servidor web, cómo se sabe el navegador de qué tipo de documento se trata?
+### Cuándo llega un documento del servidor web, ¿cómo sabe el navegador de qué tipo de documento se trata?
 - No todas las páginas contienen solo HTML. Junto con la página que devuelve el servidor indica de que tipo de documento se trata (llamado tipo MIME)
 - El browser tiene un conjunto de tipos MIME integrados que sabe desplegar (como text/HTML)).
 ### ¿Cómo hacer si el tipo MIME de una página no es de los integrados?
